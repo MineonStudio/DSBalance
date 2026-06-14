@@ -1,0 +1,24 @@
+# Build artifacts
+.build/
+*.app/
+*.app
+
+# Xcode project files (if any)
+*.xcworkspace
+*.xcuserdata
+*.xcodeproj
+
+# Compiled object files
+*.o
+
+# Swift Package Manager
+.swiftpm
+Packages/
+
+# macOS
+.DS_Store
+
+# Build scripts local
+*.swp
+*.swo
+*~
