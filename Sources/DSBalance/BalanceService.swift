@@ -1,6 +1,6 @@
 import Foundation
 
-// MARK: - 余额响应模型
+// MARK: - DeepSeek 余额响应
 
 struct BalanceResponse: Codable {
     let isAvailable: Bool
@@ -26,30 +26,56 @@ struct BalanceItem: Codable {
     }
 }
 
-// MARK: - 查询错误
+// MARK: - DeepSeek 余额服务
 
-enum BalanceError: LocalizedError {
-    case invalidURL
-    case networkError(Error)
-    case invalidResponse
-    case unauthorized
+final class DeepSeekBalanceService: BalanceServiceProtocol, @unchecked Sendable {
+    let serviceName = "DeepSeek"
+    private let endpoint = "https://api.deepseek.com/user/balance"
+    private let configManager: ConfigManager
 
-    var errorDescription: String? {
-        switch self {
-        case .invalidURL: "无效的 API 地址"
-        case .networkError(let e): "网络错误: \(e.localizedDescription)"
-        case .invalidResponse: "服务器返回异常"
-        case .unauthorized: "API Key 无效或已过期"
+    init(configManager: ConfigManager) {
+        self.configManager = configManager
+    }
+
+    func fetchUsage() async throws -> UsageResult {
+        guard let apiKey = configManager.deepSeekAPIKey, !apiKey.isEmpty else {
+            throw BalanceError.missingAPIKey
+        }
+
+        let balance = try await fetchBalance(apiKey: apiKey)
+        guard let info = balance.balanceInfos.first else {
+            throw BalanceError.noData
+        }
+
+        let symbol = currencySymbol(for: info.currency)
+        let displayValue = "\(symbol)\(info.totalBalance)"
+        let status = balance.isAvailable ? "可用" : "余额不足"
+        let detailDescription = """
+        总余额: \(symbol)\(info.totalBalance) \(info.currency)
+        赠送: \(symbol)\(info.grantedBalance) \(info.currency)
+        充值: \(symbol)\(info.toppedUpBalance) \(info.currency)
+        状态: \(status)
+        """
+        let rawSummary = "\(symbol)\(info.totalBalance) (\(symbol)\(info.grantedBalance) 赠送 / \(symbol)\(info.toppedUpBalance) 充值)"
+
+        return UsageResult(
+            displayValue: displayValue,
+            detailDescription: detailDescription,
+            used: nil,
+            limit: Double(info.totalBalance),
+            rawSummary: rawSummary
+        )
+    }
+
+    private func currencySymbol(for currency: String) -> String {
+        switch currency {
+        case "CNY": return "¥"
+        case "USD": return "$"
+        default: return "\(currency) "
         }
     }
-}
 
-// MARK: - 余额服务
-
-final class BalanceService: @unchecked Sendable {
-    private let endpoint = "https://api.deepseek.com/user/balance"
-
-    nonisolated func fetchBalance(apiKey: String) async throws -> BalanceResponse {
+    private func fetchBalance(apiKey: String) async throws -> BalanceResponse {
         guard let url = URL(string: endpoint) else {
             throw BalanceError.invalidURL
         }
@@ -59,20 +85,22 @@ final class BalanceService: @unchecked Sendable {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = 10
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let http = response as? HTTPURLResponse else {
-            throw BalanceError.invalidResponse
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                throw BalanceError.invalidResponse
+            }
+            if http.statusCode == 401 || http.statusCode == 403 {
+                throw BalanceError.unauthorized
+            }
+            guard (200 ... 299).contains(http.statusCode) else {
+                throw BalanceError.invalidResponse
+            }
+            return try JSONDecoder().decode(BalanceResponse.self, from: data)
+        } catch let error as BalanceError {
+            throw error
+        } catch {
+            throw BalanceError.networkError(error)
         }
-
-        if http.statusCode == 401 {
-            throw BalanceError.unauthorized
-        }
-
-        guard (200 ... 299).contains(http.statusCode) else {
-            throw BalanceError.invalidResponse
-        }
-
-        return try JSONDecoder().decode(BalanceResponse.self, from: data)
     }
 }

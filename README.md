@@ -1,21 +1,25 @@
 # DSBalance
 
-A lightweight macOS menu bar app that displays your DeepSeek API account balance in real time.
+A lightweight macOS menu bar app that shows your **DeepSeek API balance** and **Grok Build credit usage** in real time.
 
-Built entirely in Swift with native AppKit, it runs quietly in your menu bar without a Dock icon.
+Built entirely in Swift with native AppKit — no Dock icon, minimal footprint.
 
 ## Features
 
-- 🔍 **Real-time Balance** — Fetches your DeepSeek API balance on demand
-- 💰 **Multi-currency Support** — Displays total, granted, and topped-up balances
-- 🪟 **Menu Bar Only** — No Dock icon, minimal footprint
-- 🔒 **Secure Storage** — API key stored via system UserDefaults
-- ⚙️ **Settings Panel** — Configure and manage your API key
+- 🐳 **DeepSeek balance** — total / granted / topped-up (official API)
+- 🤖 **Grok Build usage** — remaining monthly credits via the same billing API as Grok CLI `/usage`
+- 🪟 **Menu bar only** — `LSUIElement`, no Dock icon
+- 🔄 **Auto refresh** — every 60 seconds, plus manual refresh
+- 🔀 **Display modes** — DeepSeek only / Grok only / both side by side
+- ⚙️ **Settings** — DeepSeek API key + Grok login status (reads `~/.grok/auth.json`)
 
 ## Prerequisites
 
 - macOS 14.0 (Sonoma) or later
-- A [DeepSeek](https://platform.deepseek.com/) API key
+- Optional: a [DeepSeek](https://platform.deepseek.com/) API key
+- Optional: [Grok CLI](https://grok.com) installed and signed in (`grok login`)
+
+You can use either service alone, or both.
 
 ## Download
 
@@ -26,85 +30,89 @@ Pre-built `.app` bundles are available on the [Releases](https://github.com/Mine
 > The app is signed with an ad-hoc signature (not an Apple Developer certificate), so macOS may show:
 > *"DSBalance"已损坏，无法打开。你应该将它移到废纸篓。*
 >
-> This does **not** mean the app is actually damaged. It's macOS's built-in security check rejecting a Gatekeeper-untested app. To work around:
+> This does **not** mean the app is actually damaged. Workaround:
 >
-> 1. **Option A** — Remove the quarantine attribute in Terminal:
->    ```bash
->    xattr -dr com.apple.quarantine /Applications/DSBalance.app
->    ```
->    Then launch the app normally.
+> ```bash
+> xattr -dr com.apple.quarantine /Applications/DSBalance.app
+> ```
 >
-> 2. **Option B** — Control-click (right-click) the app → **Open** → click **Open** in the dialog. The app will be remembered as an exception afterward.
->
-> This is a known limitation for open-source macOS apps without a paid Apple Developer membership. See [Troubleshooting](#troubleshooting) for details.
+> Or Control-click → **Open** → **Open**.
 
 ## Build from Source
-
-### Using Swift Package Manager
 
 ```bash
 git clone https://github.com/MineonStudio/DSBalance.git
 cd DSBalance
-swift run
+./run.sh
 ```
 
-### Build release binary
+Or manually:
 
 ```bash
 swift build -c release
+# binary: .build/<arch>-apple-macosx/release/DSBalance
 ```
 
-The built app will be at `.build/arm64-apple-macosx/release/DSBalance`. You can copy it into `/Applications` and run directly — apps built locally are not affected by the Gatekeeper issue.
+`run.sh` builds a release binary, packs `DSBalance.app`, ad-hoc signs it, and launches it.
 
 ## Usage
 
-1. Launch the app — it appears as a 💰 icon in your menu bar
-2. Click the icon and select **Settings**
-3. Enter your DeepSeek API key
-4. Click **Query Balance** to see your account balance instantly
+1. Launch the app — icons appear in the menu bar
+2. Click the icon:
+   - **DeepSeek** row shows API balance
+   - **Grok** row shows remaining / monthly credits
+3. **Settings…**
+   - Paste DeepSeek API key (stored in UserDefaults)
+   - Grok status is read from `~/.grok/auth.json` (no key to paste)
+4. If Grok shows “未登录”, run `grok login` in Terminal, then **刷新数据**
+
+### Grok credits
+
+DSBalance does **not** shell out to `grok`. It:
+
+1. Reads the OAuth access token from `~/.grok/auth.json`
+2. Calls `https://cli-chat-proxy.grok.com/v1/billing` (same source as CLI `/usage`)
+
+When the CLI refreshes the token, this app picks it up on the next refresh. If the token is expired, run `grok login` again (or open Grok once so it can refresh).
 
 ## Project Structure
 
 ```
 DSBalance/
-├── Sources/
-│   └── DSBalance/
-│       ├── main.swift              # App entry point
-│       ├── AppDelegate.swift       # Menu bar setup & lifecycle
-│       ├── BalanceService.swift    # API client & data models
-│       ├── ConfigManager.swift     # API key persistence
-│       └── SettingsViewController.swift  # Settings UI
-├── Package.swift                   # Swift Package Manager manifest
-├── icon.png                        # App icon
-├── run.sh                          # Quick run script
-└── .gitignore
+├── Sources/DSBalance/
+│   ├── main.swift
+│   ├── AppDelegate.swift           # Menu bar UI & refresh
+│   ├── BalanceServiceProtocol.swift
+│   ├── BalanceService.swift        # DeepSeek
+│   ├── GrokUsageService.swift      # Grok billing
+│   ├── ConfigManager.swift
+│   └── SettingsViewController.swift
+├── Package.swift
+├── run.sh
+└── icon.png
 ```
 
 ## Troubleshooting
 
-### "DSBalance 已损坏，无法打开"
-
-This is **not** actual damage — it's **macOS Gatekeeper** rejecting an ad-hoc signed app downloaded from the internet.
-
-**Why it happens**
-
-1. You downloaded `DSBalance-v1.0.0.zip` from GitHub
-2. macOS marks the extracted `.app` with a quarantine attribute
-3. Gatekeeper checks the code signature and finds only an ad-hoc (local-only) signature
-4. Since the app was not signed with an Apple Developer certificate nor notarized, macOS treats it as untrusted and shows the "damaged" error
-
-**Fix**
+### Gatekeeper “已损坏”
 
 ```bash
-# Remove the quarantine attribute and run
 xattr -dr com.apple.quarantine /Applications/DSBalance.app
 open /Applications/DSBalance.app
 ```
 
-Or right-click the app → **Open** → click **Open** in the prompt. This adds a one-time exception.
+### Grok shows auth error
 
-> If you built the app yourself from source, this issue does not apply.
+```bash
+grok login
+```
+
+Then click **刷新数据** in the menu.
+
+### DeepSeek shows missing key
+
+Open **设置…**, paste a key from https://platform.deepseek.com/api_keys
 
 ## License
 
-This project is open source and available under the MIT License.
+MIT

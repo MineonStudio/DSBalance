@@ -1,6 +1,6 @@
 import AppKit
 
-// 禁用 Dock 图标，仅菜单栏运行
+// 仅菜单栏运行，不显示 Dock 图标
 NSApplication.shared.setActivationPolicy(.accessory)
 
 let app = NSApplication.shared

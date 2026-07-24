@@ -12,7 +12,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "DSBalance",
-            path: "Sources/DSBalance"
+            path: "Sources/DSBalance",
+            resources: [
+                .process("Resources")
+            ]
         )
     ]
 )
